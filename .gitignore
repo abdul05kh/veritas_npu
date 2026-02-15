@@ -1,0 +1,4 @@
+venv/ 
+*.tflite 
+*.task 
+__pycache__/ 
