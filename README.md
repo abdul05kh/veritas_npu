@@ -1,4 +1,4 @@
-# 🛡️ Veritas‑NPU: The Reality Firewall  
+# 🛡️ Veritas‑NPU: The Reality Firewall
 **A Real‑Time, Hardware‑Accelerated Deepfake & Synthetic Media Detection Engine**
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)  
@@ -9,79 +9,83 @@
 **Built by Team Void Breakers for the AMD Slingshot Hackathon**  
 *Theme 6: AI + Cybersecurity & Privacy*
 
----
+Developed by: Team Void Breakers (Mohammad Abdul Kalam Hussain & Team)
 
-## 📖 Table of Contents
-1. [The Problem](#-the-problem)  
-2. [The Solution](#-the-solution)  
-3. [The Tripartite Architecture](#-the-tripartite-architecture)  
-4. [Why AMD Ryzen™ AI?](#-why-amd-ryzen-ai)  
-5. [Quick Start Guide](#-quick-start-guide)  
-6. [Execution](#-execution)  
-7. [UI Controls](#-ui-controls)
+Hardware Target: AMD Ryzen™ AI NPU (via Vitis AI Execution Provider)
 
 ---
 
-## 🚨 The Problem
-In the era of generative AI, *“Seeing is Believing”* has become a critical security vulnerability.  
-Threat actors now deploy real‑time deepfakes, face‑swaps, and synthetic video to:
+## 🚨 The Vulnerability
+In the era of Latent Diffusion and high‑fidelity generative AI, standard digital forensics have become obsolete.  
+Threat actors now deploy real‑time deepfakes and face‑swaps that are mathematically trained to bypass basic texture analysis.  
+They are used to:
 
 - Bypass biometric authentication  
-- Impersonate executives during high‑stakes video calls  
-- Execute social‑engineering attacks on Zoom, Teams, Meet, etc.
+- Impersonate executives  
+- Execute sophisticated social‑engineering attacks  
 
-Most existing detection systems are:
-
-❌ Cloud‑based (privacy‑invasive)  
-❌ High‑latency  
-❌ Not suitable for real‑time defense  
+Existing detection systems fail because they are:  
+❌ Cloud‑dependent (privacy & latency risks)  
+❌ Reliant on outdated visual‑spectrum algorithms  
+❌ Too computationally heavy for real‑time edge deployment  
 
 ---
 
 ## 💡 The Solution: Veritas‑NPU
 Veritas‑NPU acts as a **local, OS‑level Reality Firewall**.
 
-It performs real‑time digital forensics on inbound video feeds using:
+Instead of analyzing pixels, Veritas interrogates the **biological, spectral, and cryptographic signatures** of a video feed.
 
-- Compression anomaly detection  
-- Frequency‑domain biometric texture analysis  
-- Temporal jitter tracking  
+All computation happens **locally at the edge**, ensuring:
 
-All computation happens **locally**, ensuring:
-
-✔ Zero PII leaves the device  
-✔ Zero‑trust compliance  
-✔ Real‑time threat detection  
+- Zero PII leaves the device  
+- Zero‑Trust compliance  
+- Real‑time threat detection  
 
 ---
 
-## ⚙️ The Tripartite Architecture
+## ⚙️ The Empirical "Zero‑Trust" Architecture
+Veritas‑NPU abandons standard texture mapping and implements **four DOD‑level physical sensor forensic tests**:
 
-### **1. Spatial Forensics — Error Level Analysis (ELA)**
-Generative models leave unnaturally smooth compression signatures.  
-Veritas intentionally re‑compresses each frame and computes the variance of the absolute difference to expose synthetic noise patterns.
+### **1. Spectral Texture Deficit (FFT)**
+AI diffusion models over‑smooth high‑frequency microscopic pores.  
+A 2D FFT isolates this energy:
 
-### **2. Frequency Forensics — Spectral Analysis (FFT)**
-Deepfakes erase high‑frequency micro‑textures like pores and stubble.  
-A 2D FFT isolates high‑frequency energy; real skin shows chaotic energy, while deepfakes appear as smooth voids.
+- Real skin → chaotic high‑frequency spectrum  
+- Synthetic skin → smooth, low‑energy void  
 
-### **3. Temporal Forensics — Micro‑Jitter Detection (MSE)**
-Deepfake generators struggle with frame‑to‑frame consistency.  
-We compute MSE between consecutive frames to detect microscopic jitter and pixel‑shift artifacts.
+### **2. Hyper‑Saturation Chrominance Analysis (C‑VAR)**
+AI‑generated skin lacks natural sub‑surface blood flow.  
+We convert frames to **YCbCr** and isolate the **Cr (Red‑Difference)** channel to expose biological inconsistencies.
+
+### **3. Biometric Mesh Asymmetry (BMA)**
+Generative models often produce unnaturally perfect symmetry.  
+Using a **468‑point face landmarker**, Veritas measures:
+
+- Jawline asymmetry  
+- Focal plane distortion  
+- Geometric irregularities  
+
+### **4. Micro‑Temporal Jitter (MSE)**
+Deepfake generators struggle with sub‑pixel temporal consistency.  
+We compute **Mean Squared Error** across consecutive frames to detect:
+
+- Rendering tears  
+- Pixel‑shift jitter  
+- Artificial edge‑bleeding  
 
 ---
 
 ## ⚡ Why AMD Ryzen™ AI?
-Running ELA, FFTs, and biometric isolation at 30 FPS on a CPU is computationally expensive.
+Running FFTs, chrominance mapping, and multi‑target biometric isolation at 30 FPS is computationally expensive.
 
 Ryzen™ AI provides:
 
 - **Dedicated NPU acceleration** for matrix operations  
-- **Zero‑latency inference** for live video  
-- **Edge‑native privacy** (no cloud dependency)  
-- **Power efficiency** for long‑duration calls  
+- **Zero‑latency inference** for live video interrogation  
+- **Power‑efficient always‑on monitoring**  
 
-Veritas‑NPU is engineered to offload heavy forensics to the NPU, freeing CPU/GPU resources for user workloads.
+Veritas‑NPU offloads the entire forensic pipeline to the NPU, freeing CPU/GPU resources for the user’s workflow.
 
 ---
 
@@ -90,58 +94,97 @@ Veritas‑NPU is engineered to offload heavy forensics to the NPU, freeing CPU/G
 ### **Prerequisites**
 - Python **3.9+**  
 - A functional webcam  
-- (Optional but recommended) AMD Ryzen™ processor with **Ryzen AI** enabled  
+- Windows 11 (optimized for AMD Ryzen™ processors with **Ryzen AI**)  
 
 ---
 
-### **Installation**
+## Project Vision
 
-#### **1. Clone the repository**
+Veritas‑NPU is a high‑performance media forensics suite designed to restore trust in digital communications. By offloading complex computer vision and signal processing tasks to the AMD Ryzen™ AI NPU, the engine provides real‑time, local verification of media authenticity without the latency or privacy risks of cloud‑based detection.
+
+## Key Technical Features
+
+1. Multimodal Forensic Core
+
+- Visual Domain (Spatial/Geometric): ELA (Error Level Analysis), FFT (Spectral Frequency analysis), and Geometric Asymmetry checks using a 468‑point face landmarker.
+- Biological Domain (rPPG): Remote photoplethysmography for pulse detection and liveness verification using a Scipy Butterworth bandpass filter to extract BPM.
+- Acoustic Domain (Spectral Entropy): Spectral entropy analysis for voice cloning detection and AV‑Desync (Lip‑Sync) correlation using Mouth Aspect Ratio (MAR).
+
+2. Absolute Zoning UI Architecture
+
+- Volumetric 3D Integrity Field: Holographic gradient overlay adapting to head tilt and Z‑depth.
+- Thermal ELA Projection: Inferno colormap visualization of ELA variance for explainability.
+- Tactical Telemetry: Real‑time smoothed threat probability graphs.
+
+3. Enterprise Intelligence Engine
+
+- FFmpeg Direct Subprocess Routing: High‑performance audio extraction pipeline.
+- Dual‑Format Reporting: Executive TXT summaries and STIX‑style JSON threat intel mapped to MITRE ATT&CK (T1586.002).
+
+Hardware Optimization
+
+Veritas‑NPU targets AMD Ryzen™ AI and leverages the Vitis AI Execution Provider (via ONNX Runtime when available) for ultra‑low latency, efficient local inference and reduced CPU/GPU load.
+
+
+## 🔧 Installation
+
+### **1. Clone the repository**
 ```bash
 git clone https://github.com/VoidBreakers/Veritas-NPU.git
 cd Veritas-NPU
 ```
 
-#### **2. Create an isolated virtual environment**
+### **2. Create an isolated virtual environment**
 ```bash
 python -m venv venv
 ```
 
-**On Windows:**
+**Activate (Windows):**
 ```bash
 venv\Scripts\activate
 ```
 
-**On macOS/Linux:**
+**Activate (macOS/Linux):**
 ```bash
 source venv/bin/activate
 ```
 
-#### **3. Install forensic dependencies**
+### **3. Install forensic dependencies**
 ```bash
 pip install opencv-python numpy mediapipe
 ```
 
 ---
 
-## ▶️ Execution
+## ▶️ Execution & UI
 
-Launch the Enterprise Command Center:
-
+### **Launch the Enterprise Command Center GUI**
 ```bash
 python main.py
 ```
 
 **Note:**  
-On first launch, Veritas‑NPU will automatically download the required `.tflite` biometric tracking model.
+On first launch, Veritas‑NPU automatically downloads the required `face_landmarker.task` model.
 
 ---
 
-## 🖥️ UI Controls
+## 🖥️ Enterprise Dashboard Features
 
-- The dashboard automatically locks onto the primary biometric target  
-- The **Tactical Area Graph** displays smoothed threat telemetry  
-- Press **q** to securely terminate the engine and close the port  
+### **Dynamic Delaunay Triangulation**
+A real‑time OpenCV geometric wireframe maps the topography of tracked subjects.
+
+### **Multi‑Target Deep Tracking**
+Aggressive **0.15 confidence thresholds** allow tracking of up to **10 faces simultaneously**, even in the background.
+
+### **Glassmorphism HUD**
+Live Threat Telemetry is plotted on a sleek, semi‑transparent tactical area graph.
+
+### **Crash‑Proof Automated Reporting**
+When the feed is terminated (`q` key or window close):
+
+- Veritas generates a detailed `.txt` forensic breakdown  
+- Each tracked ID receives its own report  
+- Reports are stored in the **Forensic_Reports/** directory  
 
 ---
 

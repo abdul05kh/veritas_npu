@@ -1,4 +1,18 @@
-venv/ 
-*.tflite 
-*.task 
-__pycache__/ 
+
+# Python Environments
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Machine Learning Models
+*.tflite
+*.task
+
+# Generated Output & Logs
+Forensic_Reports/
+*.log
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
