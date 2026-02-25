@@ -13,6 +13,16 @@ Developed by: Team Void Breakers (Mohammad Abdul Kalam Hussain & Team)
 
 Hardware Target: AMD Ryzen™ AI NPU (via Vitis AI Execution Provider)
 
+## Table of Contents
+
+- [Project Vision](#project-vision)
+- [Key Technical Features](#key-technical-features)
+- [Quick Start Guide](#quick-start-guide)
+- [Installation](#installation)
+- [Execution & UI](#execution--ui)
+- [Enterprise Dashboard Features](#enterprise-dashboard-features)
+- [Crash‑Proof Automated Reporting](#crash-proof-automated-reporting)
+
 ---
 
 ## 🚨 The Vulnerability
