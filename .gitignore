@@ -2,17 +2,46 @@
 # Python Environments
 venv/
 env/
+.venv/
 __pycache__/
-*.pyc
+*.py[cod]
 
 # Machine Learning Models
 *.tflite
 *.task
+*.onnx
+models/*.onnx
 
 # Generated Output & Logs
 Forensic_Reports/
 *.log
+*.out
+*.err
+
+# Temporary audio / extraction artifacts
+*.wav
+veritas_temp_*.wav
+
+# Packaging / build
+build/
+dist/
+*.egg-info
+
+# Testing
+.pytest_cache/
+.coverage
+
+# IDE / Editor
+.vscode/
+.idea/
 
 # OS Generated Files
 .DS_Store
 Thumbs.db
+
+# Environment files
+.env
+.env.*
+
+# Jupyter
+.ipynb_checkpoints

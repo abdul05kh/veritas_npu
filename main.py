@@ -11,10 +11,32 @@ Features:
 - Scipy Butterworth Bandpass Filter 
 - Explicit AMD Vitis(TM) AI Hooks
 """
+import os
+from statistics import mode
+import sys
+import glob
+
+# --- AUTOMATIC NVIDIA HARDWARE LINKING ---
+def link_nvidia_hardware():
+    # Find any version of CUDA installed in the default directory
+    search_path = r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.0\bin'
+    found_paths = glob.glob(search_path)
+    
+    if found_paths:
+        # Sort to get the latest version if multiple exist
+        latest_cuda = sorted(found_paths)[-1]
+        try:
+            os.add_dll_directory(latest_cuda)
+            print(f"[INFO] SUCCESS: Linked NVIDIA Hardware via {latest_cuda}")
+        except Exception as e:
+            print(f"[WARNING] DLL Link Failed: {e}")
+    else:
+        print("[WARNING] CUDA Toolkit not found in Program Files. NPU Link disabled.")
+
+link_nvidia_hardware()
 
 import logging
 import math
-import os
 import time
 import json
 import uuid
@@ -130,6 +152,7 @@ class HardwareAccelerator:
         elif 'DmlExecutionProvider' in providers:
             return "AMD DIRECTML ACCELERATOR"
         return "CPU / XNNPACK DELEGATE"
+    
 
 
 class AudioForensics(threading.Thread):
@@ -187,7 +210,8 @@ class ForensicAnalyzer:
             v_dist = math.hypot(p_top[0] - p_bot[0], p_top[1] - p_bot[1])
             h_dist = math.hypot(p_left[0] - p_right[0], p_left[1] - p_right[1])
             return float(v_dist / (h_dist + 1e-6))
-        except:
+        except Exception as e:
+            logger.debug(f"calculate_mar failed: {e}")
             return 0.0
 
     @staticmethod
@@ -205,6 +229,10 @@ class ForensicAnalyzer:
             b, a = butter(3, [low, high], btype='band')
             filtered_signal = filtfilt(b, a, signal)
         except ValueError:
+            logger.debug("calculate_rppg: filter design failed (ValueError)")
+            return 0.0
+        except Exception as e:
+            logger.debug(f"calculate_rppg failed: {e}")
             return 0.0
             
         window = np.hamming(len(filtered_signal))
@@ -248,10 +276,23 @@ class ForensicAnalyzer:
         return mag_display, float(np.mean(np.abs(fshift)))
 
     @staticmethod
-    def calculate_chrominance(image: np.ndarray) -> float:
-        ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
-        _, cr, _ = cv2.split(ycrcb)
-        return float(np.var(cr))
+    def calculate_chrominance(frame) -> float:
+        try:
+            h, w, _ = frame.shape
+            roi = frame[int(h*0.1):int(h*0.3), int(w*0.35):int(w*0.65)]
+
+            if roi.size == 0:
+                return 0.0
+
+            avg_rgb = np.mean(roi, axis=(0, 1))
+            norm_rgb = avg_rgb / (np.mean(avg_rgb) + 1e-6)
+
+            bvp_val = 3 * norm_rgb[2] - 2 * norm_rgb[1]
+
+            return float(np.var(cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)))
+        except Exception as e:
+            logger.debug(f"calculate_chrominance failed: {e}")
+            return 0.0
 
     @staticmethod
     def calculate_mesh_asymmetry(landmarks: List, frame_w: int, frame_h: int) -> float:
@@ -263,8 +304,9 @@ class ForensicAnalyzer:
             asym_eye = abs(left_dist - right_dist) / max(left_dist, right_dist)
             asym_jaw = abs(left_jaw - right_jaw) / max(left_jaw, right_jaw)
             return float((asym_eye + asym_jaw) / 2.0)
-        except:
-            return 0.05 
+        except Exception as e:
+            logger.debug(f"calculate_mesh_asymmetry failed: {e}")
+            return 0.05
 
     @staticmethod
     def calculate_temporal_jitter(current_crop: np.ndarray, previous_crop: Optional[np.ndarray]) -> float:
@@ -477,11 +519,11 @@ class ReportGenerator:
                 else: txt_content.append("CLEAR (Organic Human Face Verified)\n\n")
 
             # Write JSON securely
-            with open(json_filepath, "w") as f:
-                json.dump(json_payload, f, indent=4)
-                
+            with open(json_filepath, "w", encoding="utf-8") as f:
+                json.dump(json_payload, f, indent=4, ensure_ascii=False)
+
             # Write TXT securely
-            with open(txt_filepath, "w") as f:
+            with open(txt_filepath, "w", encoding="utf-8") as f:
                 f.writelines(txt_content)
                 
             logger.info(f"Dual Threat Intel generated: {txt_filepath} | {json_filepath}")
@@ -496,58 +538,96 @@ class ReportGenerator:
 # ---------------------------------------------------------------------------
 
 class ForensicEngine:
-    def __init__(self, source_type: str, file_path: Optional[str] = None):
+    def _generate_narration(self, display_prob, metrics):
+        if display_prob < 40:
+            return "Subject appears authentic. No major anomalies detected."
+
+        if display_prob < 75:
+            if metrics['bpm'] < self.thresholds.rppg_min_bpm:
+                return "Warning: Weak biological signals detected."
+            return "Moderate inconsistencies detected. Further verification advised."
+
+        # High threat
+        if metrics.get('desync'):
+            return "Critical: Lip-sync mismatch detected. Likely deepfake."
+        if metrics['bpm'] < self.thresholds.rppg_min_bpm:
+            return "Critical: No pulse signature. Synthetic content suspected."
+        
+        return "High probability synthetic media detected."
+    def __init__(self, source_type: str, file_path: str = None):
+        # 1. Attributes required for the processing loop
         self.source_type = source_type
         self.file_path = file_path
+        self.session_id = str(uuid.uuid4())[:8]
+        
+        # 2. Buffers for the BPM / Pulse rating
+        self.bvp_buffer = deque(maxlen=150)
+        self.current_bpm = 0.0
+        
+        # 3. NVIDIA NPU priority (Already linked via your terminal)
+        self.providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        
+        # 4. THE STRICT FIX: Try both common names to ensure the engine starts
+        self._initialize_forensics()
+    def _initialize_forensics(self):
+        logger.info("Initializing Forensic Engine Core...")
+
+        # Core configs
         self.ui_config = UIConfig()
-        self.thresholds = Config.THRESHOLDS['video'] if source_type in ['webcam', 'video'] else Config.THRESHOLDS['image']
-        
-        self.face_database: Dict = {}
-        self.next_face_id: int = 1
-        self.telemetry_history = deque([0]*300, maxlen=300)
-        self.video_fps = 30.0 
-        
+        mode = 'video' if self.source_type in ['video', 'webcam'] else 'image'
+        self.thresholds = Config.THRESHOLDS[mode]
+        self.video_fps = 30.0
+        # Hardware provider
+        self.active_provider = HardwareAccelerator.get_active_provider()
+
+        # Model
         self._ensure_model_exists()
         self.detector = self._initialize_detector()
-        
-        self.audio_monitor = AudioForensics()
-        self.active_provider = HardwareAccelerator.get_active_provider()
-        self.video_audio_entropy = 0.0
 
-        if self.source_type == 'video' and self.file_path:
+        # Audio
+        self.audio_monitor = AudioForensics()
+
+        # State tracking
+        self.face_database = {}
+        self.next_face_id = 0
+        self.telemetry_history = deque(maxlen=120)
+
+        # Video-specific
+        self.video_audio_entropy = 0.0
+        if self.source_type == 'video':
             self._extract_video_audio()
 
+        logger.info("Forensic Engine Initialized Successfully.")   
     def _extract_video_audio(self):
         if not FFMPEG_AVAILABLE or not SCIPY_AVAILABLE:
             logger.warning("FFmpeg missing. Skipping Video Audio Extraction.")
             return
-            
+        logger.info("Extracting video audio track via FFmpeg Direct Router...")
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+        temp_wav = None
         try:
-            logger.info("Extracting video audio track via FFmpeg Direct Router...")
-            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-            
             temp_dir = tempfile.gettempdir()
             temp_wav = os.path.join(temp_dir, f"veritas_temp_{int(time.time())}.wav")
-            
+
             cmd = [
-                ffmpeg_exe, '-i', self.file_path, '-vn', 
-                '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', 
+                ffmpeg_exe, '-i', self.file_path, '-vn',
+                '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
                 temp_wav, '-y', '-loglevel', 'quiet'
             ]
             subprocess.run(cmd, check=True)
-            
-            if os.path.exists(temp_wav):
+
+            if temp_wav and os.path.exists(temp_wav):
                 rate, audio_data = wavfile.read(temp_wav)
-                os.remove(temp_wav)
-                
+
                 audio_data = audio_data.astype(np.float32)
-                max_amp = np.max(np.abs(audio_data))
-                
+                max_amp = np.max(np.abs(audio_data)) if audio_data.size else 0.0
+
                 if max_amp < 1e-4:
                     self.video_audio_entropy = 0.0
                     logger.info("Video Audio Entropy: 0.00 (TRUE SILENT TRACK DETECTED)")
                 else:
-                    norm_audio = audio_data / max_amp  
+                    norm_audio = audio_data / max_amp
                     fft_vals = np.abs(np.fft.rfft(norm_audio))
                     fft_vals = fft_vals / (np.sum(fft_vals) + 1e-9)
                     self.video_audio_entropy = -np.sum(fft_vals * np.log2(fft_vals + 1e-9))
@@ -555,10 +635,16 @@ class ForensicEngine:
             else:
                 self.video_audio_entropy = 0.0
                 logger.warning("No audio track found in the video file.")
-                
+
         except Exception as e:
             logger.error(f"FFmpeg audio extraction failed: {e}")
             self.video_audio_entropy = 0.0
+        finally:
+            try:
+                if temp_wav and os.path.exists(temp_wav):
+                    os.remove(temp_wav)
+            except Exception:
+                pass
 
     def _ensure_model_exists(self):
         if not Config.MODEL_PATH.exists():
@@ -609,8 +695,13 @@ class ForensicEngine:
             logger.error("Failed to open video source.")
             return
             
-        if self.source_type == 'video':
-            self.video_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        fps_val = None
+
+        if self.source_type in ['video', 'webcam']:
+            fps_val = cap.get(cv2.CAP_PROP_FPS)
+
+        if fps_val is not None and fps_val > 1:
+            self.video_fps = fps_val
 
         if self.source_type == 'webcam':
             self.audio_monitor.start()
@@ -730,13 +821,34 @@ class ForensicEngine:
                             target_color = self.ui_config.color_green
                             if face_prob_score >= 75: target_color = self.ui_config.color_red
                             elif face_prob_score >= 40: target_color = self.ui_config.color_orange
-
-                            DashboardRenderer.draw_biometric_mesh(frame, face_landmarks, frame_w, frame_h, target_color)
+                            # 🔥 STEP 3: Suspicious region highlight
+                            if face_prob_score >= 75:
+                                overlay = frame.copy()
+                                cv2.rectangle(overlay, (x, y), (x + bw, y + bh), (0, 0, 255), -1)
+                                cv2.addWeighted(overlay, 0.2, frame, 0.8, 0, frame)
+                            cv2.rectangle(frame, (x, y), (x+bw, y+bh), target_color, 2)
                             
                             # HUD Text
-                            hud_text = f"VOID-{matched_id:02d} [{face_prob_score}%]"
-                            if is_desync: hud_text += " !!AV-DESYNC!!"
-                            DashboardRenderer.draw_text(frame, hud_text, (x, max(15, y - 8)), 0.45, target_color, 1, bg_color=(20,20,20))
+                            # 🔥 STEP 5: Enhanced face label
+                            status_label = "HUMAN"
+                            if face_prob_score >= 75:
+                                status_label = "DEEPFAKE"
+                            elif face_prob_score >= 40:
+                                status_label = "SUSPICIOUS"
+
+                            hud_text = f"{status_label} | ID:{matched_id:02d} | {face_prob_score}%"
+                            if is_desync:
+                                hud_text += " | AV-DESYNC"
+
+                            DashboardRenderer.draw_text(
+                                frame,
+                                hud_text,
+                                (x, max(15, y - 8)),
+                                0.45,
+                                target_color,
+                                1,
+                                bg_color=(20, 20, 20)
+                            )
 
                             if face_prob_score >= highest_frame_threat:
                                 highest_frame_threat = face_prob_score
@@ -750,6 +862,7 @@ class ForensicEngine:
                 
                 smoothed_probability = (alpha * highest_frame_threat) + ((1 - alpha) * smoothed_probability)
                 display_prob = int(smoothed_probability)
+                trust_score = 100 - display_prob
                 self.telemetry_history.append(display_prob)
                 if display_prob > max_system_threat: max_system_threat = display_prob
 
@@ -770,7 +883,8 @@ class ForensicEngine:
             except Exception:
                 break
 
-        self.audio_monitor.stop()
+        if hasattr(self, 'audio_monitor'):
+            self.audio_monitor.stop()
         cap.release()
         cv2.destroyAllWindows()
         logger.info("Inference loop terminated.")
@@ -780,125 +894,304 @@ class ForensicEngine:
             if report_msg:
                 messagebox.showinfo("Dual Threat Intel Generated", f"Forensic scan finished successfully.\n\n{report_msg}")
 
-    def _render_ui_overlays(self, dashboard, frame_w, frame_h, dashboard_w, dashboard_h, head_h, deck_h, panel_w, display_prob, metrics, best_ela, best_fft):
-        c_cyan, c_red, c_green, c_orange = self.ui_config.color_cyan, self.ui_config.color_red, self.ui_config.color_green, self.ui_config.color_orange
-        pulse = abs(math.sin(time.time() * 3)) if self.source_type != 'image' else 1.0
-        badge_color = (int(c_red[0]*pulse), int(c_red[1]*pulse), int(c_red[2]))
+    def _generate_explanation(self, metrics):
+        reasons = []
 
-        # ZONE 1: TOP HEADER BAR
+        if metrics['fft'] < self.thresholds.fft_warn:
+            reasons.append("Low frequency consistency (possible synthesis)")
+
+        if metrics['asym'] > self.thresholds.mesh_asym_max:
+            reasons.append("Facial asymmetry detected")
+
+        if metrics['bpm'] < self.thresholds.rppg_min_bpm:
+            reasons.append("No biological pulse signal")
+
+        if metrics.get('desync'):
+            reasons.append("Lip-sync mismatch")
+
+        if metrics['cvar'] > self.thresholds.cvar_warn:
+            reasons.append("Color variance abnormal")
+
+        if not reasons:
+            reasons.append("No strong anomalies detected")
+
+        return reasons[:3]  # keep top 3
+    def _render_ui_overlays(self, dashboard, frame_w, frame_h, dashboard_w, dashboard_h, head_h, deck_h, panel_w, display_prob, metrics, best_ela, best_fft):
+
+        # -------------------- SPACING SYSTEM --------------------
+        PAD = 20
+        SMALL_PAD = 10
+        LINE_H = 26
+
+        # -------------------- LAYOUT BASICS --------------------
+        deck_y = head_h + frame_h
+        metrics_y = dashboard_h - 240 - 10  # matches your text_box_h logic
+
+        # -------------------- SAFE DEFAULTS --------------------
+        status_msg = "INITIALIZING"
+        status_color = (200, 200, 200)
+        trust_score = 100 - int(display_prob)
+
+        # -------------------- COLORS --------------------
+        c_cyan = self.ui_config.color_cyan
+        c_red = self.ui_config.color_red
+        c_green = self.ui_config.color_green
+        c_orange = self.ui_config.color_orange
+
+        # -------------------- STATUS LOGIC --------------------
+        if display_prob < 40:
+            status_msg = "VERIFIED HUMAN"
+            status_color = c_green
+        elif display_prob < 75:
+            status_msg = "SUSPICIOUS ACTIVITY"
+            status_color = c_orange
+        else:
+            status_msg = "SYNTHETIC / DEEPFAKE"
+            status_color = c_red
+
+        # -------------------- HEADER --------------------
         cv2.rectangle(dashboard, (0, 0), (dashboard_w, head_h), (15, 18, 22), -1)
         cv2.line(dashboard, (0, head_h), (dashboard_w, head_h), (50, 60, 70), 1)
-        DashboardRenderer.draw_text(dashboard, f"VERITAS-NPU // {self.source_type.upper()} ANALYSIS", (15, 30), 0.65, c_cyan, 2)
-        
-        prov_text = self.active_provider
-        (tw_prov, _), _ = cv2.getTextSize(prov_text, cv2.FONT_HERSHEY_DUPLEX, 0.45, 1)
-        prov_box_w = tw_prov + 30
-        
-        team_text = "TEAM VOID BREAKERS"
-        (tw_team, _), _ = cv2.getTextSize(team_text, cv2.FONT_HERSHEY_DUPLEX, 0.45, 1)
-        team_box_w = tw_team + 30
-        
-        prov_x2 = dashboard_w - 15
-        prov_x1 = prov_x2 - prov_box_w
-        team_x2 = prov_x1 - 15
-        team_x1 = team_x2 - team_box_w
 
-        cv2.rectangle(dashboard, (team_x1, 10), (team_x2, 35), (25, 30, 35), -1)
-        cv2.rectangle(dashboard, (team_x1, 10), (team_x2, 35), (60, 70, 80), 1)
-        DashboardRenderer.draw_text(dashboard, team_text, (team_x1 + 15, 27), 0.45, (200, 210, 220), 1)
+        DashboardRenderer.draw_text(
+            dashboard,
+            f"VERITAS-NPU // {self.source_type.upper()} ANALYSIS",
+            (PAD, int(head_h * 0.65)),
+            0.65,
+            c_cyan,
+            2
+        )
 
-        cv2.rectangle(dashboard, (prov_x1, 10), (prov_x2, 35), (15, 15, 35), -1)
-        cv2.rectangle(dashboard, (prov_x1, 10), (prov_x2, 35), c_red, 1)
-        DashboardRenderer.draw_text(dashboard, prov_text, (prov_x1 + 15, 27), 0.45, (255, 255, 255), 1)
+        prov_text = "CPU FORENSIC ENGINE"
+        (text_w, _), _ = cv2.getTextSize(prov_text, cv2.FONT_HERSHEY_DUPLEX, 0.45, 1)
 
-        # ZONE 2: BOTTOM DECK
-        deck_y = head_h + frame_h
-        cv2.rectangle(dashboard, (0, deck_y), (frame_w, dashboard_h), self.ui_config.color_bg, -1)
-        cv2.line(dashboard, (0, deck_y), (frame_w, deck_y), c_cyan, 2)
+        DashboardRenderer.draw_text(
+            dashboard,
+            prov_text,
+            (dashboard_w - text_w - PAD, int(head_h * 0.65)),
+            0.45,
+            (200, 200, 200),
+            1
+        )
+
+        # -------------------- VERDICT/STATUS BOX (dedicated area below image, no overlap) --------------------
+        # Conservative box sizing with explicit boundary protection
+        margin_right = 25  # Safety margin before right panel
+        box_gap = 18  # Larger gap between boxes to prevent visual overlap
+        available_width = frame_w - (2 * PAD) - box_gap - margin_right
+        box_width = int(available_width / 2)
         
-        status_color = c_green if display_prob < 40 else (c_orange if display_prob < 75 else c_red)
-        DashboardRenderer.draw_text(dashboard, "LIVE THREAT TELEMETRY", (40, deck_y + 30), 0.5, (180, 190, 200))
-        DashboardRenderer.draw_tactical_graph(dashboard, self.telemetry_history, 40, deck_y + 40, frame_w - 300, deck_h - 70, status_color)
-
-        status_mod_x = frame_w - 240
-        cv2.line(dashboard, (status_mod_x, deck_y + 20), (status_mod_x, dashboard_h - 20), (60, 70, 80), 2)
+        # Status box (left side)
+        status_box_x = PAD
+        status_box_y = deck_y + 10
+        status_box_w = box_width
+        status_box_h = 65
         
-        status_msg = "VERIFIED HUMAN" if display_prob < 40 else ("ANOMALY DETECTED" if display_prob < 75 else "CRITICAL DEEPFAKE")
-
-        DashboardRenderer.draw_text(dashboard, "GLOBAL THREAT ASSESSMENT", (status_mod_x + 20, deck_y + 40), 0.45, (180, 190, 200))
-        DashboardRenderer.draw_text(dashboard, status_msg, (status_mod_x + 20, deck_y + 80), 0.6, status_color, 2)
-        DashboardRenderer.draw_text(dashboard, f"{display_prob}%", (status_mod_x + 20, deck_y + 150), 2.5, status_color, 4)
-
-        # "SNIPER HUD" THREAT INDICATOR
-        cv2.rectangle(dashboard, (0, head_h), (frame_w, deck_y), (80, 90, 100), 2) 
-        if display_prob >= 75:
-            L, T = 40, 3  
-            cv2.line(dashboard, (0, head_h), (L, head_h), c_red, T)
-            cv2.line(dashboard, (0, head_h), (0, head_h + L), c_red, T)
-            cv2.line(dashboard, (frame_w, head_h), (frame_w - L, head_h), c_red, T)
-            cv2.line(dashboard, (frame_w, head_h), (frame_w, head_h + L), c_red, T)
-            cv2.line(dashboard, (0, deck_y), (L, deck_y), c_red, T)
-            cv2.line(dashboard, (0, deck_y), (0, deck_y - L), c_red, T)
-            cv2.line(dashboard, (frame_w, deck_y), (frame_w - L, deck_y), c_red, T)
-            cv2.line(dashboard, (frame_w, deck_y), (frame_w, deck_y - L), c_red, T)
-            cv2.rectangle(dashboard, (0, head_h), (frame_w, deck_y), (int(c_red[0]*0.6), int(c_red[1]*0.6), int(c_red[2]*0.6)), 1)
-
-        # ZONE 3: RIGHT PANEL
-        cv2.rectangle(dashboard, (frame_w, head_h), (dashboard_w, dashboard_h), (20, 24, 30), -1)
-        cv2.line(dashboard, (frame_w, head_h), (frame_w, dashboard_h), (60, 70, 80), 2)
+        # Boundary check for status box
+        if status_box_x + status_box_w > frame_w - margin_right:
+            status_box_w = frame_w - margin_right - status_box_x - box_gap
         
-        total_panel_h = dashboard_h - head_h
-        text_box_h = 240
-        img_h = (total_panel_h - text_box_h - 40) // 2 
+        # Draw background box for status
+        cv2.rectangle(dashboard, (status_box_x, status_box_y), (status_box_x + status_box_w, status_box_y + status_box_h), (25, 30, 40), -1)
+        cv2.rectangle(dashboard, (status_box_x, status_box_y), (status_box_x + status_box_w, status_box_y + status_box_h), (60, 70, 80), 1)
         
-        # THE FIX: Apply COLORMAP_INFERNO to right-side ELA map
+        # Draw status text inside box - dynamically truncate based on box width
+        # Calculate max chars that fit: (box_width - 16 for padding) / approx char width at scale 0.42
+        max_chars_status = max(10, int((status_box_w - 16) / 6.5))  # 6.5 pixels per char at 0.42 scale
+        verdict_short = status_msg[:max_chars_status] if len(status_msg) > max_chars_status else status_msg
+        DashboardRenderer.draw_text(
+            dashboard,
+            verdict_short,
+            (status_box_x + 8, status_box_y + 10),
+            0.42,
+            status_color,
+            1
+        )
+        
+        DashboardRenderer.draw_text(
+            dashboard,
+            f"T: {trust_score}%",
+            (status_box_x + 8, status_box_y + 32),
+            0.42,
+            (180, 180, 180)
+        )
+
+        # -------------------- RIGHT SIDE: GLOBAL THREAT (separate box on same row) --------------------
+        # Position threat box with proper gap and boundary checking
+        threat_box_x = status_box_x + status_box_w + box_gap
+        threat_box_y = status_box_y
+        threat_box_w = box_width
+        threat_box_h = 65
+        
+        # Explicit boundary check - ensure threat box doesn't overflow
+        threat_box_right = threat_box_x + threat_box_w
+        if threat_box_right > frame_w - 5:  # 5px safety margin
+            threat_box_w = max(100, frame_w - 5 - threat_box_x)  # Minimum 100px width
+        
+        # Draw background box for threat
+        cv2.rectangle(dashboard, (threat_box_x, threat_box_y), (threat_box_x + threat_box_w, threat_box_y + threat_box_h), (25, 30, 40), -1)
+        cv2.rectangle(dashboard, (threat_box_x, threat_box_y), (threat_box_x + threat_box_w, threat_box_y + threat_box_h), (60, 70, 80), 1)
+        
+        DashboardRenderer.draw_text(
+            dashboard,
+            "GLOBAL",
+            (threat_box_x + 8, threat_box_y + 6),
+            0.42,
+            (180, 190, 200),
+            1
+        )
+        
+        DashboardRenderer.draw_text(
+            dashboard,
+            "THREAT",
+            (threat_box_x + 8, threat_box_y + 22),
+            0.40,
+            (180, 190, 200),
+            1
+        )
+        
+        # Threat display: dynamically truncate label based on box width (reserve space for percentage)
+        # Reserve ~35px for percentage display, calculate remaining space for label
+        space_for_pct = 35
+        max_chars_threat = max(10, int((threat_box_w - space_for_pct - 16) / 5.5))  # 5.5 pixels per char at 0.38 scale
+        threat_label = status_msg[:max_chars_threat] if len(status_msg) > max_chars_threat else status_msg
+        DashboardRenderer.draw_text(
+            dashboard,
+            threat_label,
+            (threat_box_x + 8, threat_box_y + 40),
+            0.38,
+            status_color,
+            1
+        )
+        
+        # Percentage positioned to the right within box
+        pct_text = f"{int(display_prob)}%"
+        (pct_w, _), _ = cv2.getTextSize(pct_text, cv2.FONT_HERSHEY_DUPLEX, 0.42, 1)
+        DashboardRenderer.draw_text(
+            dashboard,
+            pct_text,
+            (threat_box_x + threat_box_w - pct_w - 8, threat_box_y + 40),
+            0.50,
+            status_color,
+            1
+        )
+
+        # -------------------- LEFT PANEL: SEGREGATED LAYOUT --------------------
+        # Upper Left: LIVE THREAT Graph (positioned well below status boxes)
+        graph_x = PAD
+        graph_y = status_box_y + status_box_h + 18  # 18px gap below status boxes
+        # Calculate graph width to match available space (same as status box)
+        graph_w = status_box_w
+        graph_h = int(deck_h - status_box_h - 90)  # Reduced to fit all elements
+
+        DashboardRenderer.draw_text(
+            dashboard,
+            "LIVE THREAT",
+            (graph_x, graph_y - 16),
+            0.46,
+            (180, 190, 200)
+        )
+
+        DashboardRenderer.draw_tactical_graph(
+            dashboard,
+            self.telemetry_history,
+            graph_x,
+            graph_y,
+            graph_w,
+            graph_h,
+            status_color
+        )
+
+        # Lower Left: Metric Readouts (SIGNAL/BIO/AUDIO) - BELOW graph with padding
+        metrics_section_y = graph_y + graph_h + 12
+        metrics_x = PAD
+        y = metrics_section_y
+
+        # SIGNAL block
+        DashboardRenderer.draw_text(dashboard, "SIGNAL", (metrics_x, y), 0.40, (150, 150, 150))
+        y += 16
+        DashboardRenderer.draw_text(dashboard, f"FFT: {metrics['fft']:.1f}", (metrics_x, y), 0.36, c_cyan)
+        y += 15
+        DashboardRenderer.draw_text(dashboard, f"ELA: {metrics['ela']:.1f}", (metrics_x, y), 0.36, c_cyan)
+        y += 18
+
+        # BIO block
+        DashboardRenderer.draw_text(dashboard, "BIO", (metrics_x, y), 0.40, (150, 150, 150))
+        y += 16
+        DashboardRenderer.draw_text(dashboard, f"rPPG: {metrics['bpm']:.1f}", (metrics_x, y), 0.36, c_cyan)
+        y += 18
+
+        # AUDIO block
+        DashboardRenderer.draw_text(dashboard, "AUDIO", (metrics_x, y), 0.40, (150, 150, 150))
+        y += 16
+        DashboardRenderer.draw_text(dashboard, f"{metrics.get('audio', 0.0):.2f}", (metrics_x, y), 0.36, c_cyan)
+
+
+        # -------------------- RIGHT PANEL (COMPACT LAYOUT) --------------------
+        panel_x = frame_w
+        cv2.rectangle(dashboard, (panel_x, head_h), (dashboard_w, dashboard_h), (20, 24, 30), -1)
+        
+        panel_inner_x = panel_x + 10
+        panel_inner_w = panel_w - 20
+        img_h = 100  # Fixed small size for ELA/FFT
+        
+        # --- TOP: ELA & FFT (fixed size, no scaling issues) ---
+        cursor_y = head_h + PAD
+        
         if best_ela is not None and best_fft is not None:
-            ela_y = head_h + 10
-            fft_y = ela_y + img_h + 10
-            
             hot_ela = cv2.applyColorMap(best_ela, cv2.COLORMAP_INFERNO)
-            dashboard[ela_y:ela_y+img_h, frame_w+10:dashboard_w-10] = cv2.resize(hot_ela, (panel_w-20, img_h))
-            cv2.rectangle(dashboard, (frame_w+10, ela_y), (dashboard_w-10, ela_y+img_h), c_cyan, 1, cv2.LINE_AA)
-            DashboardRenderer.draw_text(dashboard, "ELA THERMAL MAP", (frame_w + 15, ela_y + 15), 0.4, c_cyan, bg_color=(20,20,20))
+            dashboard[cursor_y:cursor_y+img_h, panel_inner_x:panel_inner_x+panel_inner_w] = cv2.resize(hot_ela, (panel_inner_w, img_h))
+            DashboardRenderer.draw_text(dashboard, "ELA", (panel_inner_x + 5, cursor_y + 10), 0.38, c_cyan)
             
-            dashboard[fft_y:fft_y+img_h, frame_w+10:dashboard_w-10] = cv2.resize(cv2.cvtColor(best_fft, cv2.COLOR_GRAY2BGR), (panel_w-20, img_h))
-            cv2.rectangle(dashboard, (frame_w+10, fft_y), (dashboard_w-10, fft_y+img_h), c_cyan, 1, cv2.LINE_AA)
-            DashboardRenderer.draw_text(dashboard, "FFT SPECTRUM", (frame_w + 15, fft_y + 15), 0.4, c_cyan, bg_color=(20,20,20))
-
-        metrics_y = dashboard_h - text_box_h - 10
-        cv2.rectangle(dashboard, (frame_w+10, metrics_y), (dashboard_w-10, dashboard_h-10), (15, 18, 24), -1)
-        cv2.rectangle(dashboard, (frame_w+10, metrics_y), (dashboard_w-10, dashboard_h-10), (60, 70, 80), 1)
-        
-        start_y = metrics_y + 30
-        spacing = 28
-        
-        DashboardRenderer.draw_text(dashboard, f"FFT ENERGY: {metrics['fft']:.1f}", (frame_w + 25, start_y), 0.45, (c_cyan if metrics['fft'] >= self.thresholds.fft_warn else c_red))
-        DashboardRenderer.draw_text(dashboard, f"ASYMMETRY:  {metrics['asym']:.3f}", (frame_w + 25, start_y + spacing), 0.45, (c_cyan if metrics['asym'] <= self.thresholds.mesh_asym_max else c_red))
-        DashboardRenderer.draw_text(dashboard, f"LIVE rPPG:  {metrics['bpm']:.1f} BPM", (frame_w + 25, start_y + spacing*2), 0.45, (c_cyan if metrics['bpm'] >= self.thresholds.rppg_min_bpm else c_red))
-        
-        audio_val = metrics.get('audio', 0.0)
-        if self.source_type == 'webcam' and not AUDIO_AVAILABLE:
-            audio_text, audio_color = "OFFLINE (MIC)", c_red
-        elif self.source_type == 'video' and not FFMPEG_AVAILABLE:
-            audio_text, audio_color = "OFFLINE (FFMPEG)", c_red
-        elif audio_val == 0.0:
-            audio_text, audio_color = "SILENT TRACK", c_orange
-        else:
-            audio_text = f"{audio_val:.2f}"
-            audio_color = c_cyan if audio_val >= self.thresholds.audio_entropy_min else c_red
+            cursor_y += img_h + 5
+            dashboard[cursor_y:cursor_y+img_h, panel_inner_x:panel_inner_x+panel_inner_w] = cv2.resize(cv2.cvtColor(best_fft, cv2.COLOR_GRAY2BGR), (panel_inner_w, img_h))
+            DashboardRenderer.draw_text(dashboard, "FFT", (panel_inner_x + 5, cursor_y + 10), 0.38, c_cyan)
             
-        DashboardRenderer.draw_text(dashboard, f"AUDIO SPEC: {audio_text}", (frame_w + 25, start_y + spacing*3), 0.45, audio_color)
+            cursor_y += img_h + 15
         
-        desync_text = "LIP-SYNC FAILED" if metrics.get('desync') else "SYNC VERIFIED"
-        desync_color = c_red if metrics.get('desync') else c_cyan
-        DashboardRenderer.draw_text(dashboard, f"AV-CORREL:  {desync_text}", (frame_w + 25, start_y + spacing*4), 0.45, desync_color)
+        # --- CONFIDENCE BREAKDOWN (compact bars, aligned right) ---
+        DashboardRenderer.draw_text(dashboard, "CONFIDENCE BREAKDOWN", (panel_inner_x, cursor_y), 0.42, (180, 180, 180))
+        cursor_y += 20
         
-        DashboardRenderer.draw_text(dashboard, f"ELA VAR:    {metrics['ela']:.1f}", (frame_w + 25, start_y + spacing*5), 0.45, c_cyan)
-        DashboardRenderer.draw_text(dashboard, f"C-VAR:      {metrics['cvar']:.1f}", (frame_w + 25, start_y + spacing*6), 0.45, (c_cyan if metrics['cvar'] <= self.thresholds.cvar_warn else c_red))
+        signals = {
+            "FFT": metrics.get('fft', 0),
+            "ASYM": metrics.get('asym', 0),
+            "rPPG": metrics.get('bpm', 0),
+            "ELA": metrics.get('ela', 0)
+        }
+        
+        metric_scale = {"FFT": 700.0, "ELA": 500.0, "ASYM": 0.6, "rPPG": 120.0}
+        
+        for i, (key, val) in enumerate(signals.items()):
+            scale = metric_scale.get(key, 100.0)
+            percent = int(min(max((val / scale) * 100.0, 0), 100))
+            bar_w = int((percent / 100.0) * (panel_inner_w - 70))
+            
+            bar_y = cursor_y + i * 18
+            cv2.rectangle(dashboard, (panel_inner_x, bar_y), (panel_inner_x + bar_w, bar_y + 12), c_cyan, -1)
+            DashboardRenderer.draw_text(dashboard, key, (panel_inner_x + panel_inner_w - 50, bar_y + 1), 0.36, (200, 200, 200))
+        
+        cursor_y += (4 * 18) + 10
+        
+        # --- WHY FLAGGED (compact, truncated to fit) ---
+        DashboardRenderer.draw_text(dashboard, "WHY FLAGGED:", (panel_inner_x, cursor_y), 0.4, (180, 180, 180))
+        cursor_y += 18
+        
+        reasons = self._generate_explanation(metrics)
+        for i, reason in enumerate(reasons[:2]):  # Show only top 2 to avoid overflow
+            truncated = reason[:35] if len(reason) > 35 else reason  # Truncate long text
+            DashboardRenderer.draw_text(dashboard, f"- {truncated}", (panel_inner_x + 5, cursor_y + i * 16), 0.36, c_orange)
+        
+        cursor_y += 50
+        
+        # --- AI ANALYSIS at bottom ---
+        narration = self._generate_narration(display_prob, metrics)
+        narration_short = narration[:50] if len(narration) > 50 else narration
+        DashboardRenderer.draw_text(dashboard, "AI ANALYSIS:", (panel_inner_x, cursor_y), 0.4, (180, 180, 180))
+        cursor_y += 16
+        DashboardRenderer.draw_text(dashboard, narration_short, (panel_inner_x + 5, cursor_y), 0.35, status_color)
+        
 
-# ---------------------------------------------------------------------------
-# Launcher & GUI
-# ---------------------------------------------------------------------------
 
 class VeritasLauncher:
     def __init__(self):

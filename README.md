@@ -1,5 +1,6 @@
-# 🛡️ Veritas‑NPU: The Reality Firewall
-**A Real‑Time, Hardware‑Accelerated Deepfake & Synthetic Media Detection Engine**
+# 🛡️ Veritas-NPU: The Reality Firewall
+
+**An Explainable, Multimodal Deepfake Detection Engine (Edge AI + Cybersecurity)**
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)  
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green.svg)](https://opencv.org/)  
@@ -11,6 +12,219 @@
 
 Developed by: Team Void Breakers (Mohammad Abdul Kalam Hussain & Team)
 
+
+---
+
+## Table of Contents
+
+- [The Problem](#-the-problem)
+- [The Solution](#-the-solution)
+- [Core Detection System](#-core-detection-system)
+- [Explainable AI Layer](#-explainable-ai-layer-killer-feature)
+- [Enterprise UI System](#-enterprise-ui-system)
+- [Reporting Engine](#-reporting-engine)
+- [Hardware Acceleration](#-hardware-acceleration)
+- [Quick Start](#-quick-start)
+- [Modes](#-modes)
+- [Key Technical Features](#key-technical-features)
+- [Installation](#-installation)
+- [Execution & UI](#-execution--ui)
+- [Project Vision](#project-vision)
+- [Built For](#-built-for)
+- [Team](#-team)
+- [Final Statement](#-final-statement)
+
+
+## ⚠️ The Problem
+
+Modern deepfakes are no longer visual tricks — they are **biologically convincing synthetic identities**.
+
+They can:
+
+* Bypass biometric authentication
+* Fake executive presence in real-time
+* Perform voice cloning + lip-sync attacks
+* Evade traditional pixel-based detection
+
+👉 Most systems fail because they:
+
+* Rely only on visual artifacts
+* Ignore biological signals
+* Are cloud-dependent (privacy risk)
+
+---
+
+## 💡 The Solution
+
+**Veritas-NPU = A Local “Reality Firewall”**
+
+Instead of asking *“does this look real?”*
+Veritas asks:
+
+> **“Does this behave like a real human?”**
+
+It performs **multimodal forensic interrogation** across:
+
+* Visual signals
+* Biological signals
+* Audio signals
+* Temporal consistency
+
+All in **real-time, on-device**
+
+---
+
+## ⚙️ Core Detection System
+
+### Engine Highlights
+
+- Holographic 40% Opacity Alpha‑Mesh (biometric mesh overlay)
+- Inferno ELA Thermal Mapping for explainable variance visualization
+- Dual‑Export Reporting (Executive TXT + STIX‑style JSON)
+- AV‑Desync / Lip‑Sync Forensics
+- Direct FFmpeg subprocess routing for high‑fidelity audio extraction
+- SciPy Butterworth bandpass filter used for robust rPPG pulse extraction
+- Explicit AMD Vitis AI execution provider hooks (ONNX runtime)
+
+
+### 🔬 1. Spectral Texture Analysis (FFT)
+
+Detects over-smoothing caused by diffusion models
+→ Synthetic faces lack high-frequency skin detail
+
+---
+
+### 🎨 2. Chrominance Variance (C-VAR)
+
+Analyzes blood-flow realism via color distribution
+→ Fake skin shows abnormal saturation patterns
+
+---
+
+### 🧬 3. Biometric Mesh Asymmetry
+
+468-point facial geometry analysis
+→ AI faces often unnaturally symmetrical
+
+---
+
+### ⏱️ 4. Temporal Jitter Detection
+
+Frame-to-frame instability detection
+→ Deepfakes produce micro inconsistencies
+
+---
+
+### ❤️ 5. rPPG Pulse Detection (Biological Liveness)
+
+Extracts heart rate from skin color fluctuations
+
+* Real human → measurable BPM
+* Deepfake → flatline / noise
+
+---
+
+### 🔊 6. Audio Forensics + Entropy Analysis
+
+Analyzes speech randomness + structure
+
+* Detects voice cloning
+* Flags unnatural spectral patterns
+
+---
+
+### 🎭 7. AV-Desync Detection (Lip Sync)
+
+Cross-validates:
+
+* Mouth motion (MAR)
+* Audio entropy
+
+→ Detects **fake talking faces**
+
+---
+
+## 🧠 Explainable AI Layer (Killer Feature)
+
+Veritas doesn’t just detect — it explains.
+
+### 🧾 “WHY FLAGGED” Panel
+
+Shows top causes:
+
+* Low spectral energy
+* No pulse signal
+* Lip-sync mismatch
+* Color anomalies
+
+---
+
+### 📊 Confidence Breakdown
+
+Per-signal contribution visualization:
+
+* FFT
+* Asymmetry
+* rPPG
+* ELA
+
+---
+
+### 🗣️ Live AI Narration
+
+Real-time reasoning:
+
+> “Critical: No pulse signature. Synthetic content suspected.”
+
+---
+
+## 🖥️ Enterprise UI System
+
+* 🎯 Tactical Threat Dashboard
+* 📈 Live Telemetry Graph
+* 🔥 Inferno ELA Thermal Mapping
+* 🧊 Holographic Biometric Mesh Overlay
+* 🎯 Multi-face tracking (ID-based)
+* 🚨 Threat-based visual highlighting
+
+---
+
+## 📦 Reporting Engine
+
+Automatic dual export:
+
+* 📄 Executive TXT Report
+* 🧠 STIX-style JSON Threat Intel
+
+Includes:
+
+* MITRE ATT&CK mapping
+* Subject-level analysis
+* Aggregated forensic metrics
+
+---
+
+## ⚡ Hardware Acceleration
+
+Supports:
+
+* AMD Ryzen™ AI (Vitis AI EP)
+* DirectML (fallback)
+* CPU (XNNPACK)
+
+Auto-detects best available provider at runtime.
+
+---
+
+## 🚀 Quick Start
+
+```bash
+git clone https://github.com/abdul05kh/veritas_npu.git
+cd veritas_npu
+python -m venv venv
+venv\Scripts\activate
+pip install opencv-python numpy mediapipe sounddevice imageio-ffmpeg scipy
+python [main.py](http://_vscodecontentref_/0)
 Hardware Target: AMD Ryzen™ AI NPU (via Vitis AI Execution Provider)
 
 ## Table of Contents
@@ -140,8 +354,8 @@ Veritas‑NPU targets AMD Ryzen™ AI and leverages the Vitis AI Execution Provi
 
 ### **1. Clone the repository**
 ```bash
-git clone https://github.com/VoidBreakers/Veritas-NPU.git
-cd Veritas-NPU
+git clone https://github.com/abdul05kh/veritas_npu.git
+cd veritas_npu
 ```
 
 ### **2. Create an isolated virtual environment**
@@ -161,7 +375,7 @@ source venv/bin/activate
 
 ### **3. Install forensic dependencies**
 ```bash
-pip install opencv-python numpy mediapipe
+pip install opencv-python numpy mediapipe scipy sounddevice imageio-ffmpeg onnxruntime
 ```
 
 ---
@@ -174,7 +388,7 @@ python main.py
 ```
 
 **Note:**  
-On first launch, Veritas‑NPU automatically downloads the required `face_landmarker.task` model.
+On first launch, veritas_npu automatically downloads the required `face_landmarker.task` model.
 
 ---
 
