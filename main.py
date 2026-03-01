@@ -981,7 +981,9 @@ class ForensicEngine:
         c_red = self.ui_config.color_red
         c_green = self.ui_config.color_green
         c_orange = self.ui_config.color_orange
-
+            # UI scale factor - reduce font sizes on narrow frames to avoid overlap
+        ui_scale = max(0.6, min(1.0, frame_w / 800.0))
+        s = lambda val: float(val) * ui_scale
         # -------------------- STATUS LOGIC --------------------
         if display_prob < 40:
             status_msg = "VERIFIED HUMAN"
@@ -1001,7 +1003,7 @@ class ForensicEngine:
             dashboard,
             f"VERITAS-NPU // {self.source_type.upper()} ANALYSIS",
             (PAD, int(head_h * 0.65)),
-            0.65,
+            s(0.65),
             c_cyan,
             2
         )
@@ -1013,7 +1015,7 @@ class ForensicEngine:
             dashboard,
             prov_text,
             (dashboard_w - text_w - PAD, int(head_h * 0.65)),
-            0.45,
+            s(0.45),
             (200, 200, 200),
             1
         )
@@ -1041,13 +1043,15 @@ class ForensicEngine:
         
         # Draw status text inside box - dynamically truncate based on box width
         # Calculate max chars that fit: (box_width - 16 for padding) / approx char width at scale 0.42
-        max_chars_status = max(10, int((status_box_w - 16) / 6.5))  # 6.5 pixels per char at 0.42 scale
+        # reduce max chars based on scaled font width
+        approx_char_px = 6.5 * ui_scale
+        max_chars_status = max(6, int((status_box_w - 16) / approx_char_px))
         verdict_short = status_msg[:max_chars_status] if len(status_msg) > max_chars_status else status_msg
         DashboardRenderer.draw_text(
             dashboard,
             verdict_short,
             (status_box_x + 8, status_box_y + 10),
-            0.42,
+            s(0.42),
             status_color,
             1
         )
@@ -1056,7 +1060,7 @@ class ForensicEngine:
             dashboard,
             f"T: {trust_score}%",
             (status_box_x + 8, status_box_y + 32),
-            0.42,
+            s(0.42),
             (180, 180, 180)
         )
 
@@ -1080,7 +1084,7 @@ class ForensicEngine:
             dashboard,
             "GLOBAL",
             (threat_box_x + 8, threat_box_y + 6),
-            0.42,
+            s(0.42),
             (180, 190, 200),
             1
         )
@@ -1089,7 +1093,7 @@ class ForensicEngine:
             dashboard,
             "THREAT",
             (threat_box_x + 8, threat_box_y + 22),
-            0.40,
+            s(0.40),
             (180, 190, 200),
             1
         )
@@ -1097,25 +1101,31 @@ class ForensicEngine:
         # Threat display: dynamically truncate label based on box width (reserve space for percentage)
         # Reserve ~35px for percentage display, calculate remaining space for label
         space_for_pct = 35
-        max_chars_threat = max(10, int((threat_box_w - space_for_pct - 16) / 5.5))  # 5.5 pixels per char at 0.38 scale
+        approx_char_px_threat = 5.5 * ui_scale
+        max_chars_threat = max(6, int((threat_box_w - space_for_pct - 16) / approx_char_px_threat))
         threat_label = status_msg[:max_chars_threat] if len(status_msg) > max_chars_threat else status_msg
         DashboardRenderer.draw_text(
             dashboard,
             threat_label,
             (threat_box_x + 8, threat_box_y + 40),
-            0.38,
+            s(0.38),
             status_color,
             1
         )
         
         # Percentage positioned to the right within box
         pct_text = f"{int(display_prob)}%"
-        (pct_w, _), _ = cv2.getTextSize(pct_text, cv2.FONT_HERSHEY_DUPLEX, 0.42, 1)
+        (pct_size, _baseline) = cv2.getTextSize(pct_text, cv2.FONT_HERSHEY_DUPLEX, s(0.42), 1)
+        pct_w = pct_size[0]
+        pct_x = threat_box_x + threat_box_w - pct_w - 8
+        # ensure percent does not overflow left boundary of the box
+        if pct_x < threat_box_x + 8:
+            pct_x = threat_box_x + 8
         DashboardRenderer.draw_text(
             dashboard,
             pct_text,
-            (threat_box_x + threat_box_w - pct_w - 8, threat_box_y + 40),
-            0.50,
+            (pct_x, threat_box_y + 40),
+            s(0.50),
             status_color,
             1
         )
@@ -1132,7 +1142,7 @@ class ForensicEngine:
             dashboard,
             "LIVE THREAT",
             (graph_x, graph_y - 16),
-            0.46,
+            s(0.46),
             (180, 190, 200)
         )
 
@@ -1152,23 +1162,23 @@ class ForensicEngine:
         y = metrics_section_y
 
         # SIGNAL block
-        DashboardRenderer.draw_text(dashboard, "SIGNAL", (metrics_x, y), 0.40, (150, 150, 150))
+        DashboardRenderer.draw_text(dashboard, "SIGNAL", (metrics_x, y), s(0.40), (150, 150, 150))
         y += 16
-        DashboardRenderer.draw_text(dashboard, f"FFT: {metrics['fft']:.1f}", (metrics_x, y), 0.36, c_cyan)
+        DashboardRenderer.draw_text(dashboard, f"FFT: {metrics['fft']:.1f}", (metrics_x, y), s(0.36), c_cyan)
         y += 15
-        DashboardRenderer.draw_text(dashboard, f"ELA: {metrics['ela']:.1f}", (metrics_x, y), 0.36, c_cyan)
+        DashboardRenderer.draw_text(dashboard, f"ELA: {metrics['ela']:.1f}", (metrics_x, y), s(0.36), c_cyan)
         y += 18
 
         # BIO block
-        DashboardRenderer.draw_text(dashboard, "BIO", (metrics_x, y), 0.40, (150, 150, 150))
+        DashboardRenderer.draw_text(dashboard, "BIO", (metrics_x, y), s(0.40), (150, 150, 150))
         y += 16
-        DashboardRenderer.draw_text(dashboard, f"rPPG: {metrics['bpm']:.1f}", (metrics_x, y), 0.36, c_cyan)
+        DashboardRenderer.draw_text(dashboard, f"rPPG: {metrics['bpm']:.1f}", (metrics_x, y), s(0.36), c_cyan)
         y += 18
 
         # AUDIO block
-        DashboardRenderer.draw_text(dashboard, "AUDIO", (metrics_x, y), 0.40, (150, 150, 150))
+        DashboardRenderer.draw_text(dashboard, "AUDIO", (metrics_x, y), s(0.40), (150, 150, 150))
         y += 16
-        DashboardRenderer.draw_text(dashboard, f"{metrics.get('audio', 0.0):.2f}", (metrics_x, y), 0.36, c_cyan)
+        DashboardRenderer.draw_text(dashboard, f"{metrics.get('audio', 0.0):.2f}", (metrics_x, y), s(0.36), c_cyan)
 
 
         # -------------------- RIGHT PANEL (COMPACT LAYOUT) --------------------
