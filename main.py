@@ -101,9 +101,9 @@ logger = logging.getLogger("VeritasNPU")
 @dataclass
 class UIConfig:
     header_h: int = 45
-    panel_w: int = 360
-    bottom_h: int = 240
-    max_video_w: int = 960
+    panel_w: int = 320  # Reduced from 360 for better screen fit
+    bottom_h: int = 180  # Reduced from 240 for better screen fit
+    max_video_w: int = 800  # Reduced from 960 to better fit on standard screens
     window_name: str = "Veritas-NPU // Enterprise Multimodal Forensics"
     
     color_red: Tuple[int, int, int] = (36, 28, 237)
@@ -111,6 +111,21 @@ class UIConfig:
     color_green: Tuple[int, int, int] = (57, 255, 20)
     color_orange: Tuple[int, int, int] = (0, 165, 255)
     color_bg: Tuple[int, int, int] = (10, 12, 16)
+    
+    @staticmethod
+    def get_screen_dimensions():
+        """Get screen dimensions with padding for taskbar"""
+        try:
+            # Try to get screen dimensions using tkinter
+            root = tk.Tk()
+            screen_width = root.winfo_screenwidth()
+            screen_height = root.winfo_screenheight()
+            root.destroy()
+            # Leave space for taskbars and window decorations
+            return max(800, int(screen_width * 0.95)), max(600, int(screen_height * 0.90))
+        except Exception:
+            # Default fallback
+            return 1366, 768
 
 
 @dataclass
@@ -711,6 +726,9 @@ class ForensicEngine:
         max_system_threat = 0
         frame_count = 0
         image_processed = False
+        
+        # Get screen dimensions and calculate safe dashboard size
+        screen_w, screen_h = UIConfig.get_screen_dimensions()
 
         while True:
             if self.source_type != 'image' or not image_processed:
@@ -719,19 +737,38 @@ class ForensicEngine:
                 
                 frame_count += 1
                 
-                max_width = self.ui_config.max_video_w
-                if frame.shape[1] > max_width:
-                    scale = max_width / frame.shape[1]
-                    frame = cv2.resize(frame, (int(frame.shape[1] * scale), int(frame.shape[0] * scale)))
-
-                frame_h, frame_w, _ = frame.shape
-                
+                # Calculate maximum frame width based on screen size and panel width
                 head_h = self.ui_config.header_h
                 deck_h = self.ui_config.bottom_h
                 panel_w = self.ui_config.panel_w
+                max_allowed_frame_w = screen_w - panel_w - 20  # 20px safety margin
+                max_allowed_frame_w = min(max_allowed_frame_w, self.ui_config.max_video_w)
+                max_allowed_frame_h = screen_h - head_h - deck_h - 40  # 40px for margins
+                
+                # Scale frame to fit constraints
+                frame_h, frame_w, _ = frame.shape
+                scale_w = max_allowed_frame_w / frame_w if frame_w > max_allowed_frame_w else 1.0
+                scale_h = max_allowed_frame_h / frame_h if frame_h > max_allowed_frame_h else 1.0
+                scale = min(scale_w, scale_h, 1.0)  # Don't upscale
+                
+                if scale < 1.0:
+                    new_w = int(frame_w * scale)
+                    new_h = int(frame_h * scale)
+                    frame = cv2.resize(frame, (new_w, new_h))
+                    frame_h, frame_w, _ = frame.shape
                 
                 dashboard_w = frame_w + panel_w
                 dashboard_h = head_h + frame_h + deck_h
+                
+                # Final safety check - should never exceed screen size
+                if dashboard_w > screen_w or dashboard_h > screen_h:
+                    logger.warning(f"Dashboard size ({dashboard_w}x{dashboard_h}) exceeds screen ({screen_w}x{screen_h}). Further scaling applied.")
+                    scale_factor = min(screen_w / dashboard_w, screen_h / dashboard_h, 0.95)
+                    frame_w = int(frame_w * scale_factor)
+                    frame_h = int(frame_h * scale_factor)
+                    frame = cv2.resize(frame, (frame_w, frame_h))
+                    dashboard_w = frame_w + panel_w
+                    dashboard_h = head_h + frame_h + deck_h
                 
                 dashboard = np.full((dashboard_h, dashboard_w, 3), self.ui_config.color_bg, dtype=np.uint8)
                 
@@ -872,6 +909,13 @@ class ForensicEngine:
                     image_processed = True
 
             cv2.imshow(self.ui_config.window_name, dashboard)
+            
+            # Move window to center of screen on first display
+            if frame_count == 1:
+                try:
+                    cv2.moveWindow(self.ui_config.window_name, 0, 0)
+                except Exception:
+                    pass
 
             key = cv2.waitKey(1 if self.source_type != 'image' else 10) & 0xFF
             if key in [27, ord('q')]: 
@@ -1150,46 +1194,54 @@ class ForensicEngine:
             cursor_y += img_h + 15
         
         # --- CONFIDENCE BREAKDOWN (compact bars, aligned right) ---
-        DashboardRenderer.draw_text(dashboard, "CONFIDENCE BREAKDOWN", (panel_inner_x, cursor_y), 0.42, (180, 180, 180))
-        cursor_y += 20
-        
-        signals = {
-            "FFT": metrics.get('fft', 0),
-            "ASYM": metrics.get('asym', 0),
-            "rPPG": metrics.get('bpm', 0),
-            "ELA": metrics.get('ela', 0)
-        }
-        
-        metric_scale = {"FFT": 700.0, "ELA": 500.0, "ASYM": 0.6, "rPPG": 120.0}
-        
-        for i, (key, val) in enumerate(signals.items()):
-            scale = metric_scale.get(key, 100.0)
-            percent = int(min(max((val / scale) * 100.0, 0), 100))
-            bar_w = int((percent / 100.0) * (panel_inner_w - 70))
+        # Only show if there's enough vertical space
+        if cursor_y + 100 < dashboard_h:
+            DashboardRenderer.draw_text(dashboard, "CONFIDENCE BREAKDOWN", (panel_inner_x, cursor_y), 0.40, (180, 180, 180))
+            cursor_y += 18
             
-            bar_y = cursor_y + i * 18
-            cv2.rectangle(dashboard, (panel_inner_x, bar_y), (panel_inner_x + bar_w, bar_y + 12), c_cyan, -1)
-            DashboardRenderer.draw_text(dashboard, key, (panel_inner_x + panel_inner_w - 50, bar_y + 1), 0.36, (200, 200, 200))
+            signals = {
+                "FFT": metrics.get('fft', 0),
+                "ASYM": metrics.get('asym', 0),
+                "rPPG": metrics.get('bpm', 0),
+                "ELA": metrics.get('ela', 0)
+            }
+            
+            metric_scale = {"FFT": 700.0, "ELA": 500.0, "ASYM": 0.6, "rPPG": 120.0}
+            
+            for i, (key, val) in enumerate(signals.items()):
+                scale = metric_scale.get(key, 100.0)
+                percent = int(min(max((val / scale) * 100.0, 0), 100))
+                bar_w = int((percent / 100.0) * (panel_inner_w - 70))
+                
+                bar_y = cursor_y + i * 16
+                if bar_y + 12 < dashboard_h:  # Boundary check
+                    cv2.rectangle(dashboard, (panel_inner_x, bar_y), (panel_inner_x + bar_w, bar_y + 12), c_cyan, -1)
+                    DashboardRenderer.draw_text(dashboard, key, (panel_inner_x + panel_inner_w - 50, bar_y + 1), 0.34, (200, 200, 200))
         
-        cursor_y += (4 * 18) + 10
+        if cursor_y + 16 < dashboard_h:
+            cursor_y += (4 * 16) + 8
         
         # --- WHY FLAGGED (compact, truncated to fit) ---
-        DashboardRenderer.draw_text(dashboard, "WHY FLAGGED:", (panel_inner_x, cursor_y), 0.4, (180, 180, 180))
-        cursor_y += 18
-        
-        reasons = self._generate_explanation(metrics)
-        for i, reason in enumerate(reasons[:2]):  # Show only top 2 to avoid overflow
-            truncated = reason[:35] if len(reason) > 35 else reason  # Truncate long text
-            DashboardRenderer.draw_text(dashboard, f"- {truncated}", (panel_inner_x + 5, cursor_y + i * 16), 0.36, c_orange)
-        
-        cursor_y += 50
+        if cursor_y + 70 < dashboard_h:
+            DashboardRenderer.draw_text(dashboard, "WHY FLAGGED:", (panel_inner_x, cursor_y), 0.38, (180, 180, 180))
+            cursor_y += 16
+            
+            reasons = self._generate_explanation(metrics)
+            for i, reason in enumerate(reasons[:2]):  # Show only top 2 to avoid overflow
+                truncated = reason[:32] if len(reason) > 32 else reason  # Truncate long text
+                if cursor_y + i * 15 < dashboard_h:
+                    DashboardRenderer.draw_text(dashboard, f"- {truncated}", (panel_inner_x + 5, cursor_y + i * 15), 0.34, c_orange)
+            
+            cursor_y += 45
         
         # --- AI ANALYSIS at bottom ---
-        narration = self._generate_narration(display_prob, metrics)
-        narration_short = narration[:50] if len(narration) > 50 else narration
-        DashboardRenderer.draw_text(dashboard, "AI ANALYSIS:", (panel_inner_x, cursor_y), 0.4, (180, 180, 180))
-        cursor_y += 16
-        DashboardRenderer.draw_text(dashboard, narration_short, (panel_inner_x + 5, cursor_y), 0.35, status_color)
+        if cursor_y + 35 < dashboard_h:
+            narration = self._generate_narration(display_prob, metrics)
+            narration_short = narration[:45] if len(narration) > 45 else narration
+            DashboardRenderer.draw_text(dashboard, "AI ANALYSIS:", (panel_inner_x, cursor_y), 0.38, (180, 180, 180))
+            cursor_y += 15
+            if cursor_y < dashboard_h:
+                DashboardRenderer.draw_text(dashboard, narration_short, (panel_inner_x + 5, cursor_y), 0.33, status_color)
         
 
 
